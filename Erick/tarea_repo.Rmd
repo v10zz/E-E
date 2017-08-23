@@ -1,0 +1,12 @@
+---
+title: "tarea_repo"
+author: "Erick Zarza"
+date: "22 de agosto de 2017"
+output: html_document
+---
+
+```{r Directorio,echo=FALSE}
+setwd("C:/Users/EZ/Desktop/S11/Minería de datos/mineriaDatosITAM_agodic17/alumnos/erick_zarza_salazar_139380") 
+```
+
+Mi nombre es Erick Zarza Salazar, tengo 22 años. No trabajo, pero estoy haciendo mi servicio social en la oficina de Posgrados en el campus de Sta. Teresa. Estoy estudiando Actuaría y voy en 10mo semestre.
