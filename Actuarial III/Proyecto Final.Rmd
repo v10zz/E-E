@@ -1,0 +1,32 @@
+---
+title: "Proyecto Final"
+author: "Erick Zarza, Edmar Trapaga."
+date: "11 de mayo de 2018"
+output:
+  html_document: 
+    df_print: paged 
+    theme: cerulean
+    code_folding: hide
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F, message = F, warning = F, 
+                      error = F,fig.align = "center",
+                      fig.height = 5, fig.width = 5,
+                      fig.path='figure/', cache=F,
+                      cache.path='cache/')
+```
+
+```{r directory_libraries_seed}
+setwd("C:/Users/EZ/Desktop/ITAM/E-E/Actuarial III")
+
+libraries <- c("tidyverse","kableExtra", "grid", "knitr", "gridExtra", "readxl", "latex2exp")
+
+invisible(lapply(libraries, library,
+                 character.only = TRUE)) #carga todos los paquete requeridos sin imprimir el resultado de hacerlo
+
+set.seed(139380)
+```
+
+# {.tabset .tabset-fade .tabset-pills} 
