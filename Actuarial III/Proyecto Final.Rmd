@@ -11,7 +11,7 @@ output:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = F, message = F, warning = F, 
+knitr::opts_chunk$set(echo = T, message = F, warning = F, 
                       error = F,fig.align = "center",
                       fig.height = 5, fig.width = 5,
                       fig.path='figure/', cache=F,
@@ -30,3 +30,77 @@ set.seed(139380)
 ```
 
 # {.tabset .tabset-fade .tabset-pills} 
+
+1. Modelo Colectivo
+
+```{r, cache=F}
+# f_n <- función de masa de probabilidad de la frecuencia 
+sop <- seq(0,100000,10000)
+lambda <- 0.1
+theta <- 10000
+n <- 0:5
+
+f_n <- matrix(nrow=2,ncol=length(n)) %>% as.data.frame()
+for (i in 0:(length(n)-1)){
+  f_n[,i+1] <- c(n[i+1],dpois(n[i+1],lambda)) 
+}
+
+colnames(f_n) <- c(paste0("Pr(N=",n,")"))
+rownames(f_n) <- c("n","Pr(N=n)")
+
+# F_nx <- distribución de la n-ésima convolusión
+
+F_n <- function(n){ifelse(n==0,1,0)}
+
+F_nx <- matrix(nrow=length(sop),ncol=length(n)) %>% as.data.frame()
+
+for (i in 0:(length(n)-1)){
+  F_nx[,i+1] <- c(F_n(n[i+1]),
+            ifelse(n[i+1]==0,0,1)*pgamma(
+              sop[-1],shape=n[i+1],scale=theta)) 
+}
+
+F_nx[,1] <- format(F_nx[,1], scientific = F) %>% as.numeric()
+F_nx[1,] <- format(F_nx[1,], scientific = F) %>% as.numeric()
+
+colnames(F_nx) <- c(paste0("",n,""))
+rownames(F_nx) <- c(paste0("",format(sop, scientific = F),""))
+
+
+
+# F_s distribución acumulada del modelo agregado
+
+F_s <- NULL
+
+F_s[1] <- sum(f_n[2,]*F_nx[1,])
+
+for (i in 1:(length(sop))-1){
+F_s[1] <- sum(f_n[2,]*F_nx[1,])
+F_s[i+1] <- F_s[1] + sum(f_n[2,]*F_nx[i+1,])
+}
+
+# f_s densidad de probabilidad del modelo agregado
+
+f_s <- NULL
+f_s[1] <- F_s[1]
+for(i in 1:(length(sop)-1)){
+f_s[i+1] <- F_s[i+1]-F_s[i]
+}
+
+#tabla completa para modelo agregado
+
+mod_agregado <- data.frame(s=format(sop, 
+                                      scientific = F),
+                           fs=f_s,Fs=F_s)
+names(mod_agregado) <- c("s","f(s)","F(s)")
+
+kable(mod_agregado,format.args = list(big.mark = ","))
+kable(F_nx,format.args = list(big.mark = ","))
+kable(f_n, format.args = list(big.mark= ","))
+```
+
+```{r}
+plot(sop,f_s)
+plot(sop,F_s)
+```
+
