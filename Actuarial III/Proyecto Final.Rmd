@@ -31,14 +31,15 @@ set.seed(139380)
 
 # {.tabset .tabset-fade .tabset-pills} 
 
-1. Modelo Colectivo
+1.1 Modelo Colectivo
 
 ```{r, cache=F}
 # f_n <- función de masa de probabilidad de la frecuencia 
-sop <- seq(0,100000,10000)
-lambda <- 0.1
-theta <- 10000
-n <- 0:5
+sop <- seq(0,100000,1000)
+lambda <- 0.1 # =E[N]= media de la frecuencia
+n <- 0:5 # # soporte de la frecuencia
+theta <- 10000 # =E[X]= media de la severidad
+
 
 f_n <- matrix(nrow=2,ncol=length(n)) %>% as.data.frame()
 for (i in 0:(length(n)-1)){
@@ -93,14 +94,68 @@ mod_agregado <- data.frame(s=format(sop,
                                       scientific = F),
                            fs=f_s,Fs=F_s)
 names(mod_agregado) <- c("s","f(s)","F(s)")
+```
 
-kable(mod_agregado,format.args = list(big.mark = ","))
+```{r}
 kable(F_nx,format.args = list(big.mark = ","))
+kable(mod_agregado,format.args = list(big.mark = ","))
 kable(f_n, format.args = list(big.mark= ","))
 ```
 
 ```{r}
 plot(sop,f_s)
 plot(sop,F_s)
+```
+
+1.2
+
+```{r}
+n_sim <- 10000
+lambda <- 0.1
+theta <- 10000
+sim_i <- NULL
+for(i in 1:n_sim){
+N <- rpois(1,lambda = lambda)
+X_i <- rexp(N,1/theta)
+S_i <- sum(X_i)
+sim_i[i] <- S_i 
+}
+
+emp_dist_s <- ecdf(sim_i)
+emp_dist_s
+plot(emp_dist_s)
+
+sim_i <- data.frame(sim_i)
+colnames(sim_i) <- "sim"
+
+ggplot(sim_i, aes(sim)) + stat_ecdf(geom = "step") + ylim(c(.9,1))
+
+#ggplot(mod_agregado, aes(x="s", y="F(s)")) + geom_point()
+plot(mod_agregado$s,mod_agregado$`F(s)`)
+
+s <- mod_agregado$s %>% as.character() %>% as.numeric()
+f_s <- mod_agregado$`f(s)` %>% as.character() %>% as.numeric()
+media_s <- sum(s*f_s )/length(sop)
+media_s
+mediasim_s <- sim_i$sim %>% mean()
+```
+
+#Gama trasladada
+
+```{r}
+theta <- 1/theta
+lambda <- lambda
+E_X <- 1/theta #Media de severidad
+E_X2 <- 2/(theta^2) #Segundo momento severidad
+E_X3 <- 6/(theta^3)
+
+alpha <- 4*lambda*(E_X2)^3/(E_X3)^2 # parámetro alpha para proximacion gama
+beta <- 2*E_X2/E_X3 # parámetro beta de aproximacion gama
+x_0 <-lambda*E_X-beta # parámetro de traslación para aproximación gama
+
+E_S <- x_0+alpha/beta
+E_S
+mediasim_s
+media_s
 ```
 
