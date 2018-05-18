@@ -91,71 +91,160 @@ f_s[i+1] <- F_s[i+1]-F_s[i]
 #tabla completa para modelo agregado
 
 mod_agregado <- data.frame(s=format(sop, 
-                                      scientific = F),
+                                      scientific = F) %>% as.numeric(),
                            fs=f_s,Fs=F_s)
 names(mod_agregado) <- c("s","f(s)","F(s)")
 ```
 
 ```{r}
+kable(f_n, format.args = list(big.mark= ","))
 kable(F_nx,format.args = list(big.mark = ","))
 kable(mod_agregado,format.args = list(big.mark = ","))
-kable(f_n, format.args = list(big.mark= ","))
 ```
 
 ```{r}
-plot(sop,f_s)
-plot(sop,F_s)
+ggplot(mod_agregado,aes(x=s,y=`f(s)`)) + geom_point() + theme_bw()
+ggplot(mod_agregado,aes(x=s,y=`F(s)`)) + geom_point() + theme_bw()
+
 ```
 
 1.2
 
 ```{r}
 n_sim <- 10000
-lambda <- 0.1
-theta <- 10000
+#lambda <- 0.1
+#theta <- 10000
 sim_i <- NULL
+N_cuenta <- NULL
+
 for(i in 1:n_sim){
 N <- rpois(1,lambda = lambda)
 X_i <- rexp(N,1/theta)
 S_i <- sum(X_i)
 sim_i[i] <- S_i 
+N_cuenta[i] <- N
 }
 
-emp_dist_s <- ecdf(sim_i)
-emp_dist_s
-plot(emp_dist_s)
-
-sim_i <- data.frame(sim_i)
+#Data frame de las simulaciones y gráfica de dist empírica
+sim_i <- data.frame(sim_i) 
 colnames(sim_i) <- "sim"
 
-ggplot(sim_i, aes(sim)) + stat_ecdf(geom = "step") + ylim(c(.9,1))
+ggplot(sim_i, aes(sim)) + stat_ecdf(geom = "step") + coord_cartesian(ylim=(c(.9,1)),xlim=c(0,100000)) + theme_bw()
 
-#ggplot(mod_agregado, aes(x="s", y="F(s)")) + geom_point()
-plot(mod_agregado$s,mod_agregado$`F(s)`)
+#s <- mod_agregado$s %>% as.character() %>% as.numeric()
+#f_s <- mod_agregado$`f(s)` %>% as.character() %>% as.numeric()
 
-s <- mod_agregado$s %>% as.character() %>% as.numeric()
-f_s <- mod_agregado$`f(s)` %>% as.character() %>% as.numeric()
-media_s <- sum(s*f_s )/length(sop)
-media_s
-mediasim_s <- sim_i$sim %>% mean()
+s <- mod_agregado$s 
+f_s <- mod_agregado$`f(s)` 
 ```
 
 #Gama trasladada
 
 ```{r}
-theta <- 1/theta
-lambda <- lambda
+theta <- 1/10000
 E_X <- 1/theta #Media de severidad
 E_X2 <- 2/(theta^2) #Segundo momento severidad
-E_X3 <- 6/(theta^3)
+E_X3 <- 6/(theta^3) #TErcer momento severidad
 
 alpha <- 4*lambda*(E_X2)^3/(E_X3)^2 # parámetro alpha para proximacion gama
-beta <- 2*E_X2/E_X3 # parámetro beta de aproximacion gama
-x_0 <-lambda*E_X-beta # parámetro de traslación para aproximación gama
+beta <- 2*(E_X2/E_X3) # parámetro beta de aproximacion gama
+x_0 <-lambda*E_X-(2*lambda*(E_X2)^2)/E_X3 # parámetro de traslación para aproximación gama
 
-E_S <- x_0+alpha/beta
-E_S
-mediasim_s
-media_s
+media_s <- sum(s*f_s)
+mediasim_s <- sim_i$sim %>% mean()
+
+E_S <- x_0+(alpha/beta)
+E_S  # Media de Gama
+mediasim_s # Media de simulaciones
+media_s # Media de conv
+```
+
+# Varianza
+
+```{r}
+var_gama_s <- alpha/beta^2 #
+var_sim_s <- var(sim_i$sim)
+
+E_X2_convoluciones <- sum(s^2*f_s) #Segundo momento de la distribución de convoluciones
+var_s <- E_X2_convoluciones-(media_s)^2 #Varianza de convoluciones
+
+c(var_gama_s,sqrt(var_gama_s)) # Varianza de gama trasaladada
+c(var_sim_s,sqrt(var_sim_s)) # Varianza de simulaciones
+c(var_s,sqrt(var_s)) # Varianza de las convoluciones
+```
+
+# Sesgo
+
+```{r}
+sesgo_gama_s <- 2*alpha/beta^3 #sesgo(skewness)
+sesgo_s <- sum((s-media_s)^3*f_s) #sesgo(skewness) convoluciones
+c(sesgo_gama_s,sesgo_s)
+
+coef_sesgo_gama_s <- sesgo_gama_s/(var_gama_s)^(3/2) #coeficiente de sesgo gama
+coef_sesgo_s <- sesgo_s/(var_s)^(3/2) #coeficiente de sesgo convoluciones
+c(coef_sesgo_gama_s,coef_sesgo_s)
+```
+
+# Kurtosis
+
+```{r}
+kurtosis_s <- sum((s-media_s)^4*f_s) #kurtosis convoluciones
+coef_kur_s <- kurtosis_s/(var_s)^2
+
+kurtosis_gama_s <- (6/alpha)+3
+
+coef_kur_s
+kurtosis_gama_s
+```
+
+#Percentiles
+
+```{r}
+percentiles <- c(0.25,0.50,0.75,0.95,0.99)
+per_sim <- quantile(sim_i$sim,percentiles) #Percentiles de simulaciones
+per_sim
+
+#Percentiles de las convolusiones
+#25
+per25_s <- filter(mod_agregado,`F(s)`<0.25)
+per25_s <- ifelse(dim(per25_s)[1]!=0,per25_s$s %>% max(),0)
+
+#50
+per50_s <- filter(mod_agregado,`F(s)`<0.50)
+per50_s <- ifelse(dim(per50_s)[1]!=0,per50_s$s %>% max(),0)
+
+#75
+per75_s <- filter(mod_agregado,`F(s)`<0.75)
+per75_s <- ifelse(dim(per75_s)[1]!=0,per75_s$s %>% max(),0)
+
+#95
+per95_s <- filter(mod_agregado,`F(s)`<0.95)
+per95_s <- ifelse(dim(per95_s)[1]!=0,per95_s$s %>% max(),0)
+
+#99
+per99_s <- filter(mod_agregado,`F(s)`<0.99)
+per99_s <- ifelse(dim(per99_s)[1]!=0,per99_s$s %>% max(),0)
+
+per_s <- c(per25_s,per50_s,per75_s,per95_s,per99_s)
+per_s #Percentiles de la convolución
+```
+
+## Pregunta 2
+
+```{r}
+n_sim <- 100
+sim_serie <- matrix(nrow=n_sim,ncol=2)
+for(i in 1:n_sim){
+sim_serie[i,1] <- rexp(1,lambda)
+sim_serie[i,2] <- rexp(1,theta)
+}
+
+sim_serie <- data.frame(T_i=sim_serie[,1],
+                        X_i=sim_serie[,2])
+
+sim_serie <- sim_serie[order(sim_serie$T_i),] #Ordena la serie de tiempo
+
+
+ggplot(sim_serie, aes(x=T_i,y=X_i)) + geom_point() + coord_cartesian(xlim=c(0,5))
 ```
 
