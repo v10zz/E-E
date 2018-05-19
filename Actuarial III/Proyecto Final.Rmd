@@ -232,19 +232,46 @@ per_s #Percentiles de la convolución
 ## Pregunta 2
 
 ```{r}
-n_sim <- 100
+set.seed(139380)
+
+n_sim <- 10000
+sim_serie <- NULL
 sim_serie <- matrix(nrow=n_sim,ncol=2)
-for(i in 1:n_sim){
-sim_serie[i,1] <- rexp(1,lambda)
-sim_serie[i,2] <- rexp(1,theta)
+for(i in 1:(n_sim-1)){
+sim_serie[1,1] <- rexp(1,lambda) #Tiempo 1
+sim_serie[1,2] <- rexp(1,theta) #Monto 1
+
+sim_serie[i+1,1] <- rexp(1,lambda) + sim_serie[i,1]
+
+sim_serie[i+1,2] <- rexp(1,theta)
 }
+
 
 sim_serie <- data.frame(T_i=sim_serie[,1],
                         X_i=sim_serie[,2])
 
-sim_serie <- sim_serie[order(sim_serie$T_i),] #Ordena la serie de tiempo
+sim_serie <- sim_serie %>% mutate(S_t=cumsum(X_i))
 
+ggplot(sim_serie, aes(x=T_i,y=X_i)) + geom_step() + coord_cartesian(xlim=c(0,100))
 
-ggplot(sim_serie, aes(x=T_i,y=X_i)) + geom_point() + coord_cartesian(xlim=c(0,5))
+ggplot(sim_serie, aes(x=T_i,y=S_t)) + geom_step() + coord_cartesian(xlim=c(0,100),ylim=c(0,200000))
 ```
+
+2.3
+
+```{r}
+sop_real <- c(0:100000)
+real_X <- data.frame(soporte=sop_real,teorica=pexp(sop_real,theta))
+
+
+ggplot(sim_serie,aes(X_i))+ stat_ecdf()+ geom_line(data=real_X,aes(x=sop_real,y=teorica),col="red")
+
+#Percentiles
+media_per <-length(sop_real)*(.10) 
+var_per <- length(sop_real)*(.1)*(.9)
+Int_conf_p <- c((-1.645)*sqrt(var_per)+media_per+.5,(1.645)*sqrt(var_per)-media_per+.5)
+Int_conf_p
+#percentiles_2.4 <- data.frame(i=sop_real,Pr_i=)
+```
+
 
