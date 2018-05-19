@@ -260,18 +260,31 @@ ggplot(sim_serie, aes(x=T_i,y=S_t)) + geom_step() + coord_cartesian(xlim=c(0,100
 2.3
 
 ```{r}
-sop_real <- c(0:100000)
-real_X <- data.frame(soporte=sop_real,teorica=pexp(sop_real,theta))
-
-
-ggplot(sim_serie,aes(X_i))+ stat_ecdf()+ geom_line(data=real_X,aes(x=sop_real,y=teorica),col="red")
+t_vector <- length(sim_serie$X_i)
+sop <- c(0:(t_vector-1))
+ 
+real_X <- data.frame(soporte=c(0:100000),teorica=pexp(c(0:100000),theta))
 
 #Percentiles
-media_per <-length(sop_real)*(.10) 
-var_per <- length(sop_real)*(.1)*(.9)
-Int_conf_p <- c((-1.645)*sqrt(var_per)+media_per+.5,(1.645)*sqrt(var_per)-media_per+.5)
-Int_conf_p
-#percentiles_2.4 <- data.frame(i=sop_real,Pr_i=)
+#media_per <-length(sop)*(.1) 
+#var_per <- length(sop)*(.1)*(.9)
+#sd_per <- sqrt(var_per)
+#Int_conf_p <- c((-1.645)*sd_per+media_per+.5,(1.645)*sd_per+media_per+.5)
+#Int_conf_p
+
+media_per <- function(x){length(sop)*(x*1/t_vector)}
+sd_per <- function(x){sqrt(length(sop)*(1/t_vector)*(1/(t_vector-1)))}
+alpha <- qnorm(.99)
+#se añaden los percentiles y los estadísticos de orden
+sim_serie <- sim_serie %>% mutate(X_ord=sort(X_i),i=sop+.5
+                                  ,ind_inf=floor(-alpha*sd_per(sop)+media_per(sop)+2)
+                                  ,ind_sup=ceiling(alpha*sd_per(sop)+media_per(sop)+2)
+                                  ,q=i/t_vector+0.00005
+                                  ,inf=ifelse(ind_inf>0,X_ord[ind_inf],min(X_ord))
+                                  ,sup=ifelse(ind_sup<t_vector,X_ord[ind_sup],max(X_ord)))
+
+ggplot(sim_serie) + stat_ecdf(aes(X_i))+ geom_line(data=real_X,aes(x=soporte,y=teorica),col="red") + geom_line(aes(x=inf,y=q),col="blue") + geom_line(aes(x=sup,y=q),col="blue")
+View(sim_serie)
 ```
 
 
