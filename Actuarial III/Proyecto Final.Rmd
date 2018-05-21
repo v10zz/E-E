@@ -35,7 +35,7 @@ set.seed(139380)
 
 ```{r, cache=F}
 # f_n <- función de masa de probabilidad de la frecuencia 
-sop <- seq(0,100000,1000)
+sop <- seq(0,100000,10000) #1000
 lambda <- 0.1 # =E[N]= media de la frecuencia
 n <- 0:5 # # soporte de la frecuencia
 theta <- 10000 # =E[X]= media de la severidad
@@ -252,7 +252,7 @@ sim_serie <- data.frame(T_i=sim_serie[,1],
 
 sim_serie <- sim_serie %>% mutate(S_t=cumsum(X_i))
 
-ggplot(sim_serie, aes(x=T_i,y=X_i)) + geom_step() + coord_cartesian(xlim=c(0,100))
+ggplot(sim_serie, aes(x=T_i,y=X_i)) + geom_step() + coord_cartesian(xlim=c(0,1000))
 
 ggplot(sim_serie, aes(x=T_i,y=S_t)) + geom_step() + coord_cartesian(xlim=c(0,100),ylim=c(0,200000))
 ```
@@ -260,31 +260,285 @@ ggplot(sim_serie, aes(x=T_i,y=S_t)) + geom_step() + coord_cartesian(xlim=c(0,100
 2.3
 
 ```{r}
-t_vector <- length(sim_serie$X_i)
-sop <- c(0:(t_vector-1))
+sop <- c(0:(n_sim-1))
  
 real_X <- data.frame(soporte=c(0:100000),teorica=pexp(c(0:100000),theta))
 
-#Percentiles
-#media_per <-length(sop)*(.1) 
-#var_per <- length(sop)*(.1)*(.9)
-#sd_per <- sqrt(var_per)
-#Int_conf_p <- c((-1.645)*sd_per+media_per+.5,(1.645)*sd_per+media_per+.5)
-#Int_conf_p
+#Intervalo de confianza para los cuantiles p
+n <- n_sim
+p <- seq(1/n_sim,1,by=1/n_sim) #Cuantiles deseado
+q <- 1-p
+alpha=.1
+z <- qnorm(1-(alpha/2),0,1)
 
-media_per <- function(x){length(sop)*(x*1/t_vector)}
-sd_per <- function(x){sqrt(length(sop)*(1/t_vector)*(1/(t_vector-1)))}
-alpha <- qnorm(.99)
+media_per <- n*p
+var_per <- n*p*q
+sd_per <- sqrt(var_per)
+
+LI <- ifelse(floor(media_per + 0.5 - z*sd_per)<1
+             ,1
+             ,ifelse(floor(media_per + 0.5 - z*sd_per)>n_sim
+                     ,n_sim
+                     ,floor(media_per + 0.5 - z*sd_per)))
+             
+
+LS <- ifelse(ceiling(media_per + 0.5 + z*sd_per)<1
+             ,1
+             ,ifelse(ceiling(media_per + 0.5 + z*sd_per)>n_sim
+                     ,n_sim
+                     ,ceiling(media_per + 0.5 + z*sd_per)))
+
 #se añaden los percentiles y los estadísticos de orden
-sim_serie <- sim_serie %>% mutate(X_ord=sort(X_i),i=sop+.5
-                                  ,ind_inf=floor(-alpha*sd_per(sop)+media_per(sop)+2)
-                                  ,ind_sup=ceiling(alpha*sd_per(sop)+media_per(sop)+2)
-                                  ,q=i/t_vector+0.00005
-                                  ,inf=ifelse(ind_inf>0,X_ord[ind_inf],min(X_ord))
-                                  ,sup=ifelse(ind_sup<t_vector,X_ord[ind_sup],max(X_ord)))
 
-ggplot(sim_serie) + stat_ecdf(aes(X_i))+ geom_line(data=real_X,aes(x=soporte,y=teorica),col="red") + geom_line(aes(x=inf,y=q),col="blue") + geom_line(aes(x=sup,y=q),col="blue")
-View(sim_serie)
+sim_serie <- sim_serie %>% mutate(X_ord=sort(X_i),q=p,LI=X_ord[LI],LS=X_ord[LS])
+
+ggplot(sim_serie) + stat_ecdf(aes(X_i))+ geom_line(data=real_X,aes(x=soporte,y=teorica),col="red") + geom_line(aes(x=LI,y=q),col="blue") + geom_line(aes(x=LS,y=q),col="blue")
+
+
+#Regiones de confianza para la distribución
+perc_int <- c(.25, .5 , .75, .9, .95, .99)
+indices_perc <- n_sim*perc_int
+tabla_perc_int <- data.frame(sim_serie[indices_perc,c("q","LI","LS")])
+names(tabla_perc_int) <- c("Percentiles","Límite Inferior", "Límite Superior")
+
+kable(tabla_perc_int)
 ```
 
 
+
+2.4
+```{r}
+ggplot(data = sim_serie, aes(X_i))+geom_histogram()
+```
+
+```{r}
+#Valor esperado limitado
+#Limited Expected Value
+min_ux <- function(x,u){y <- ifelse(x<u,x,u)}
+x <- NULL
+LEV <- NULL
+
+for(i in 1:n_sim){
+x <- min_ux(sim_serie$X_ord,
+            sim_serie$X_ord[i])
+LEV[i] <- mean(x)
+}
+
+sim_serie <- sim_serie %>% mutate(LEV)
+
+ggplot(sim_serie) + geom_line(aes(x=X_ord,y=LEV))
+```
+
+```{r}
+#Media en exceso de 
+#Mean Excess Loss
+Fn_x <- ecdf(sim_serie$X_i)(sim_serie$X_ord) 
+Sn_x <- 1-Fn_x
+
+sim_serie <- sim_serie %>% mutate(MEL=(mean(X_i)-LEV)/Sn_x)
+
+ggplot(sim_serie) + geom_line(aes(x=X_ord,y=MEL))
+```
+
+```{r}
+#Fuerza de mortalidad
+sim_serie <- sim_serie %>% mutate(mu_x=(1/n_sim)/Sn_x)
+
+sim_serie$mu_x[n_sim] <- 1
+
+ggplot(sim_serie) + geom_line(aes(x=X_ord,y=mu_x))
+```
+
+
+```{r}
+# Prueba Xi cuadrada
+#muestra <- sampling::srswor(1000,length(sim_serie$X_i))
+
+#muestraF <- sim_serie$X_i[which(muestra==1)] %>% as.data.frame()
+
+prob_exp <- dexp(sim_serie$X_i, theta)
+chisq.test(sim_serie$X_i, p=prob_exp, rescale.p = TRUE)
+```
+
+2.7
+```{r}
+ggplot(sim_serie, aes(sample=X_i))+geom_qq(distribution = qexp)
+
+# El modelo parece que apenas subestima los eventos de monto alto, pero en general ajusta bastante bien. Esto es obvio, dado que los datos fueron simulados a partir de una exponencial.
+```
+
+2.8
+
+```{r}
+sop_frec <- floor(max(sim_serie$T_i))
+tabla_frec <- data.frame(n=rep(0,sop_frec))
+#ti <- sim_serie$T_i
+#x <- NULL
+#x <- matrix(nrow=21,ncol=7) 
+#for(i in c(0:20)){ #corre todo los valores del soprte deseados
+#  for(j in 1:5){ #evalua cada uno de los puntos de la muestra y encuentra el intervalo al que pertencece
+#  x[i+1,j] <- ifelse(i<ti[j]&ti[j]<i+1,1,0)
+#  x[i+1,7] <- i+1
+#  }}
+#for (i in 0:20){ #suma las columnas para contabilizar el total de eventos en el periodo i-ésimo
+#  x[i+1,6] <- sum(x[i+1,c(1:5)])
+#}
+
+ti <- sim_serie$T_i
+ceil_ti <- ceiling(ti) #techo
+un_n <- unique(ceil_ti) #buscar valores único para indexarlos de un vector lleno de ceros
+tab_ti <- table(ceil_ti) %>% as.data.frame() #cuenta las proporciones de los valores en la muestra
+frec_n <- rep(0,sop_frec)
+frec_n[un_n] <- tab_ti$Freq #llena las frecuencias para los valores que se encuentran en la muestra
+
+
+n_ti <- data.frame(n=c(0:sop_frec+1),frec=frec_n)
+
+#x <- matrix(nrow=sop_frec,ncol=n_sim+2)
+#ti <- sim_serie$T_i
+#for(i in 0:(sop_frec-1)){
+#  for(j in 1:n_sim){
+#  x[i+1,j] <- ifelse(i<ti[j]&ti[j]<i+1,1,0)
+#  x[i+1,n_sim+1] <- i+1
+#  }}
+#for (i in 1:(sop_frec-1)){
+#  x[i+1,n_sim+2] <- sum(x[i+1,])
+#}
+
+#Ajusta la distribcuión de maxima verosimilitud 
+lambda_est <- MASS::fitdistr(n_ti$frec, densfun = 'Poisson')
+alpha <- 0.10
+z_alpha <- qnorm(1-(alpha/2),0,1)
+Int_lambda <- c(lambda_est$estimate-z_alpha*lambda_est$sd
+  ,lambda_est$estimate+z_alpha*lambda_est$sd)
+```
+
+Un intervalo de confianza al 90% de confianza es `r Int_lambda`
+
+### Ejercicio 3
+```{r}
+Ind <- NULL
+u <- 30000 # Límite de cobertura
+d <- 5000 # Deducible
+for(i in 1:length(sim_serie$X_i)) {
+  Ind[i] <- min(sim_serie$X_i[i], u)
+  Ind[i] <- max(sim_serie$X_i[i]-d,0)
+  Ind[i] <- min(Ind[i], u)
+}
+
+indem_sim <- data.frame(S=sim_serie$X_i, "Indemnizaciones"=Ind)
+
+sim_serie <- sim_serie %>% mutate(Indemnizaciones=Ind) %>% select(c(1:2,11,3:10))
+
+
+# Proporción de indemnizaciones realizables de datos originales 
+prop <- sum(sim_serie$Indemnizaciones!=0)/n_sim
+
+sim_rest <- n_sim-sum(sim_serie$Indemnizaciones==0) 
+# Checar formulas para saber si tendría esta proporción de manera analítica
+
+media_indem <- sim_serie$Indemnizaciones %>% mean()
+media_teorica_indem <- exp(-5000*theta)*(8008.5) + 30000*(exp(-35000*theta))
+
+prop_indemnizable_teo <- (pexp(35000,theta)-pexp(5000,theta))
+
+```
+
+```{r}
+kable(sim_serie[1:10,1:3])
+```
+
+
+Se tiene `r prop` de los datos originales una vez realizada la selección de los eventos indemnizables de las simulaciones generadas, para estimar esta proporción teóricamente calculamos la probabibilidad de pertencer al rango indemnizable , con ello la proporción indemnizable teóricamente es: $F_X(35,000)-F_X(50,000)$ = `r prop_indemnizable_teo`
+
+ Además el valor de medio de las indemnizaciones es `r media_indem`. 
+ 
+Para calcular el valor teórico indemnizable se calculó la media de la siguiente variable aleatoria:
+
+$$Y=\begin{cases}
+0 & \mbox{si } X<5000 \\
+X-5000 & \mbox{si } 5000 \le X < 35000 \\
+30000 & \mbox{si } 35000 \le X \\
+\end{cases}
+$$
+
+En donde $X$ es la variable aleatoria de la severidad ($X \sim exp({\theta}=10,000)$) con lo cual $E[Y]$ = `r media_teorica_indem`.
+
+Se observa que tanto la estimación de la proporción y del valor esperado de las indemnizaciones son muy similares a lo que se observó en las simulaciones. Con lo cuál se comprubeba la veracidad el modelo.
+
+3.2
+
+```{r}
+#write.csv(indem_sim,
+#          "./muestra_indemnizaciones.csv")
+
+# Con los datos en excel y usando la función Solver
+#n_sim*lambda #número esperado de siniestros en 100k simulaciones
+#n_sim-n_sim*lambda#proporción estimada con lambda
+```
+
+```{r}
+frec_indem <- sim_serie %>% filter(Indemnizaciones!=0)
+sop_frec_indem <- floor(max(frec_indem$T_i))
+tabla_frec_indem <- data.frame(n=rep(0,sop_frec_indem))
+
+ti_indem <- frec_indem$T_i
+ceil_ti_indem <- ceiling(ti_indem) #techo
+un_n_indem <- unique(ceil_ti_indem) #buscar valores único para indexarlos de un vector lleno de ceros
+tab_ti_indem <- table(ceil_ti_indem) %>% as.data.frame() #cuenta las proporciones de los valores en la muestra
+frec_n_indem <- rep(0,sop_frec_indem)
+frec_n[un_n_indem] <- tab_ti_indem$Freq #llena las frecuencias para los valores que se encuentran en la muestra
+
+
+n_ti_indem <- data.frame(n=c(0:sop_frec+1),frec=frec_n)
+
+#Ajusta la distribcuión de maxima verosimilitud 
+lambda_est_indem <- MASS::fitdistr(n_ti_indem$frec, densfun = 'Poisson')
+alpha <- 0.10
+z_alpha <- qnorm(1-(alpha/2),0,1)
+Int_lambda_indem <- c(lambda_est_indem$estimate-z_alpha*lambda_est_indem$sd
+  ,lambda_est_indem$estimate+z_alpha*lambda_est_indem$sd)
+#Int_lambda_indem
+```
+
+Un intervalo de confianza al 90% de confianza para el lambda del proceso de indemnizaciones es es `r Int_lambda_indem`, y el valor puntual estimado es $\lambda$= `r lambda_est_indem$estimate`
+
+Con los datos en Excel y usando la función Solver, se tienen los siguientes resultados:
+
+```{r}
+n_ind <- 5976 # Observaciones totales quitando las que se tenían con indemnización 0 (debajo del deducible)
+lambda_maxver_ind <- 9579.89 # Lamda estimada por máxima verosimilitud con censura (u=30,000) y truncamiento (d=5,000)
+```
+
+```{r}
+#Ajusta la distribcuión de maxima verosimilitud para las indeminzaciones
+theta_indem <- MASS::fitdistr(frec_indem$Indemnizaciones, densfun = 'exponential')
+#theta_indem$estimate
+alpha <- 0.10
+z_alpha <- qnorm(1-(alpha/2),0,1)
+Int_lambda <- c(lambda_est$estimate-z_alpha*lambda_est$sd
+  ,lambda_est$estimate+z_alpha*lambda_est$sd)
+```
+
+El estimador máximo verosimil para las indemnizaciones es: $\theta$=`r 1/theta_indem$estimate`en forma escalar
+
+3.3
+
+```{r}
+#Regiones de confianza
+#n_sim #Número de simulaciones
+indem_sim <- indem_sim %>% mutate(Ind_ord=sort(Indemnizaciones))
+medias_per_ind <- n_sim* .95
+vars_per_ind <- n_sim*.95*(1-.95)
+desvest_per_ind <- sqrt(vars_per_ind)
+lim_inf_ind <- floor(-1.96*desvest_per_ind+medias_per_ind+.5)
+lim_sup_ind <- ceiling(1.96*desvest_per_ind+medias_per_ind+.5)
+perc_int <- 0.95
+
+lim_inf_ind <- c(indem_sim$Ind_ord[lim_inf_ind],tabla_perc_int[5,2])
+lim_sup_ind <- c(indem_sim$Ind_ord[lim_sup_ind],tabla_perc_int[5,3])
+
+conf_int_ind <- data.frame("Intervalos"=c("Indemnizaciones", "Severidad"),"Límite Inferior"=lim_inf_ind, "Límite Superior"=lim_sup_ind) 
+conf_int_ind <- conf_int_ind %>% mutate(Cuantil_95=c(quantile(indem_sim$Indemnizaciones,.95),quantile(indem_sim$S,.95)))
+kable(conf_int_ind)
+```
