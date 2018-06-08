@@ -1,0 +1,89 @@
+---
+title: "Reto R"
+author: "Erick Zarza"
+date: "6 de junio de 2018"
+output:
+  pdf_document: default
+  html_document: 
+    df_print: paged 
+    theme: tango
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F, message = F, warning = F, 
+                      error = F,fig.align = "center",
+                      fig.height = 5, fig.width = 5,
+                      fig.path='figure/', cache=F,
+                      cache.path='cache/')
+```
+
+```{r directory_libraries_seed}
+setwd("C:/Users/EZ/Desktop/RetoR")
+
+libraries <- c("tidyverse","kableExtra", "grid", "knitr", "gridExtra")
+
+invisible(lapply(libraries, library,
+                 character.only = TRUE)) #carga todos los paquete requeridos sin imprimir el resultado de hacerlo
+
+set.seed(139380)
+```
+
+
+Método 2
+
+```{r}
+planea_data <- read_csv("planeamedia2016.csv")
+
+data_messy <- planea_data
+data_messy <- data_messy[4,] 
+
+c <- NULL
+for (i in 1:25) {c[i] <- paste0("x",i)}
+
+names(data_messy) <- c
+
+#Se cambian aquellos valores de "Si" por 1s
+
+data_messy[!is.na(data_messy$x14),"x14"] <- 1
+data_messy[!is.na(data_messy$x15),"x15"] <- 1
+
+#Se llenan los NAs
+
+data_messy[is.na(data_messy$x14),"x14"] <- 0
+data_messy[is.na(data_messy$x15),"x15"] <- 0
+
+View(data_messy)
+```
+
+```{r}
+names(data_messy) <- c
+names(data_messy)[12:13] <-c('Lenguaje Y Comunicación','Matemáticas') 
+num_eval <- data_messy %>% gather("Materia",'Alumnos evaluados',12:13)
+
+names(data_messy) <- c
+names(data_messy)[14:15] <-c('Lenguaje Y Comunicación','Matemáticas')
+sint_trampa <- data_messy %>% gather("Materia",'¿Hay resultados similares?',14:15)
+
+names(data_messy) <- c
+names(data_messy)[16:17] <-c('Lenguaje Y Comunicación','Matemáticas')
+muestra_rep <- data_messy %>% gather("Materia",'Muestra represetativa',16:17)
+
+m2 <- num_eval %>% cbind(sint_trampa[,25]) %>% cbind(muestra_rep[,25]) %>% select(-c(12:15))
+
+names(m2)[12:15] <-c('I','II','III','IV')
+tidy_data <- m2 %>% gather("Nivel de aprovechamiento","Porcentaje (LYC)",12:15)
+
+names(m2)[12:15] <- c[18:21]
+names(m2)[16:19] <- c('I','II','III','IV')
+apr_mate <- m2 %>% gather("Nivel de aprovechamiento","Porcentaje (Matemáticas)",16:19)
+tidy_data <- tidy_data %>% cbind("Porcentaje (Matemáticas)"=as.numeric(apr_mate[,21])) %>% cbind('Porcentaje'=0) %>% select(-c(12:15))
+
+for(i in 1:length(tidy_data)){
+ifelse(tidy_data$Materia[i]=="Matemáticas", tidy_data$Porcentaje[i] <- as.numeric(tidy_data$`Porcentaje (Matemáticas)`[i]),tidy_data$Porcentaje[i] <- tidy_data$`Porcentaje (LYC)`[i])
+}
+
+#tidy_data <- tidy_data %>% select(-c(17,18))
+View(tidy_data)
+```
+
