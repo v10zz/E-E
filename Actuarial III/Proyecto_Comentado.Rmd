@@ -1,0 +1,748 @@
+---
+title: "Proyecto Final"
+author: "Erick Zarza, Edmar Trapaga."
+date: "11 de mayo de 2018"
+output:
+  html_document: 
+    df_print: paged 
+    theme: cerulean
+    code_folding: hide
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F, message = F, warning = F, 
+                      error = F,fig.align = "center",
+                      fig.height = 5, fig.width = 5,
+                      fig.path='figure/', cache=F,
+                      cache.path='cache/')
+```
+
+```{r directory_libraries_seed}
+setwd("C:/Users/EZ/Desktop/ITAM/E-E/Actuarial III")
+
+libraries <- c("tidyverse","kableExtra", "grid", "knitr", "gridExtra", "readxl", "latex2exp")
+
+invisible(lapply(libraries, library,
+                 character.only = TRUE)) #carga todos los paquete requeridos sin imprimir el resultado de hacerlo
+
+set.seed(139380)
+```
+
+# {.tabset .tabset-fade .tabset-pills} 
+
+## Pregunta 1
+
+1.1 
+
+Modelo Colectivo
+
+Calculamos la distribución compuesta del proceso de riesgo F(s) con distribución para la frecuencia Poisson con $\lambda=0.1$ y distribución de severidad exponencial con media $\frac{1}{\beta}=10,000$ , se calcularon las probabilidades de ocurrencia de siniestros de 0 hasta 5 ya que la probabilidad de ocurrencia a partir de este punto es muy pequeña debido a la tasa de ocurrencia tan pequeña.
+
+Para el calculo de la distribución agregada se utilizó la siguiente tabla con con las de convoluciones del proceso de riesgo. La convuluciones tienen distribución Gamma con parámetros $\alpha=n$ y $\beta=1/10,000$. Utilizando esas dos tablas, se construyó la distribución compuesta del proceso de riesgo
+$F_{S}(s)=\sum{P[N=n]F^{*n}(x)}$. La función de densidad se caluló restando el valor de la densidad acumulada en cada valor de $s$ con el acumulado en $s-1$
+
+```{r, cache=F}
+# f_n <- función de masa de probabilidad de la frecuencia 
+sop <- seq(0,100000,1000) #1000
+lambda <- 0.1 # =E[N]= media de la frecuencia
+n <- 0:5 # # soporte de la frecuencia
+theta <- 10000 # =E[X]= media de la severidad
+
+
+f_n <- matrix(nrow=2,ncol=length(n)) %>% as.data.frame()
+for (i in 0:(length(n)-1)){
+  f_n[,i+1] <- c(n[i+1],dpois(n[i+1],lambda)) 
+}
+
+colnames(f_n) <- c(paste0("Pr(N=",n,")"))
+rownames(f_n) <- c("n","Pr(N=n)")
+
+# F_nx <- distribución de la n-ésima convolución
+
+F_n <- function(n){ifelse(n==0,1,0)}
+
+F_nx <- matrix(nrow=length(sop),ncol=length(n)) %>% as.data.frame()
+
+for (i in 0:(length(n)-1)){
+  F_nx[,i+1] <- c(F_n(n[i+1]),
+            ifelse(n[i+1]==0,0,1)*pgamma(
+              sop[-1],shape=n[i+1],scale=theta)) 
+}
+
+F_nx[,1] <- format(F_nx[,1], scientific = F) %>% as.numeric()
+F_nx[1,] <- format(F_nx[1,], scientific = F) %>% as.numeric()
+
+colnames(F_nx) <- c(paste0("",n,""))
+rownames(F_nx) <- c(paste0("",format(sop, scientific = F),""))
+
+
+
+# F_s distribución acumulada del modelo agregado
+
+F_s <- NULL
+
+F_s[1] <- sum(f_n[2,]*F_nx[1,])
+
+for (i in 1:(length(sop))-1){
+F_s[1] <- sum(f_n[2,]*F_nx[1,])
+F_s[i+1] <- F_s[1] + sum(f_n[2,]*F_nx[i+1,])
+}
+
+# f_s densidad de probabilidad del modelo agregado
+
+f_s <- NULL
+f_s[1] <- F_s[1]
+for(i in 1:(length(sop)-1)){
+f_s[i+1] <- F_s[i+1]-F_s[i]
+}
+
+#tabla completa para modelo agregado
+
+mod_agregado <- data.frame(s=format(sop, 
+                                      scientific = F) %>% as.numeric(),
+                           fs=f_s,Fs=F_s)
+names(mod_agregado) <- c("s","f(s)","F(s)")
+```
+
+```{r}
+kable(head(f_n,10), format.args = list(big.mark= ","))
+kable(head(F_nx,10),format.args = list(big.mark = ","))
+kable(tail(F_nx,10),format.args = list(big.mark = ","))
+kable(head(mod_agregado,10),format.args = list(big.mark = ","))
+kable(tail(mod_agregado,10),format.args = list(big.mark = ","))
+```
+
+```{r}
+ggplot(mod_agregado,aes(x=s,y=`f(s)`)) + geom_point() + theme_bw()
+ggplot(mod_agregado,aes(x=s,y=`F(s)`)) + geom_point() + theme_bw()
+```
+
+Se observa en la gráfica de la función de densidad que hay una concentración alta de probabilidad cuando $S=0$, que tiene sentido si ya que en promedio ocurren $\lambda=.1$ siniestros al año, por lo que la ocurrencia de evento es muy baja y con ello hay un punto grande de acumulación para $S=0$
+
+Esto también se ve ilustrado en la gráfica de la distribución, pues en el primer valor graficado de $S=0$ la probabilidad acumulado ya supera el 90%.
+
+Es importante mencionar que modificamos la escala de la gráfica ara que empezara en $p=0.90$ ya que es a partir de donde comienza a acumularse probabilidad.
+
+El modelo generado a través de las convoluciones se generó con mayor precisión agregando más términos al soporte de $S$ observando un comportamiento similiar, sin embargo por motivos visuales se decidió solamente mostrar la distribución para los 10 puntos inciales y los 10 puntos finales del soporte de $S$
+
+1.2 
+
+Simulación de la Suma Aleatoria
+
+Para la simulación del proceso de riesgo, se generaron las distribuciones para la frecuencia Poisson(.1) y exponencial(10,000)  de manera independiente. Dado el valor de $N=n$ obtenido, simulamos $n$ montos con distribución exponencial de media 10,000 y sumamos los $n$ montos simulados, para obtener las simulaciones i-ésimas del proceso de riesgo agregado. 
+
+Se repitió el proceso 10,000 veces para obtener todas las simulaciones requeridas. A continuación se muestra la gráfica de la distribución empírica del proceso de riesgo.
+
+```{r}
+n_sim <- 10000
+#lambda <- 0.1
+#theta <- 10000
+sim_i <- NULL
+N_cuenta <- NULL
+
+for(i in 1:n_sim){
+N <- rpois(1,lambda = lambda)
+X_i <- rexp(N,1/theta)
+S_i <- sum(X_i)
+sim_i[i] <- S_i 
+N_cuenta[i] <- N
+}
+
+#Data frame de las simulaciones y gráfica de dist empírica
+sim_i <- data.frame(sim_i) 
+colnames(sim_i) <- "sim"
+
+#ggplot(sim_i, aes(sim)) + stat_ecdf(geom = "step") + coord_cartesian(ylim=(c(.9,1)),xlim=c(0,100000)) + theme_bw()
+
+ggplot() + geom_point(data=mod_agregado,aes(x=s,y=`F(s)`)) + theme_bw() + stat_ecdf(geom = "step",data=sim_i, aes(sim), col="red") + coord_cartesian(ylim=(c(.9,1)),xlim=c(0,100000))
+
+#s <- mod_agregado$s %>% as.character() %>% as.numeric()
+#f_s <- mod_agregado$`f(s)` %>% as.character() %>% as.numeric()
+
+s <- mod_agregado$s 
+f_s <- mod_agregado$`f(s)` 
+```
+
+Se observa claramente una similaridad muy marcada con el modelo genereado por medio de las convoluciones, la distribución empírica es la línea marcada en rojo, mientras que la distribución agredad se muestra a manera de puntos.
+
++ Gamma trasladada
+
+La aproximación por Gamma se realizó de la siguiente manera:
+
+1) Se calcularon los primeros 3 momentos de la severidad con distribución $exp(\lambda=\dfrac{1}{10,000})$
+
+2) Usando los momentos se calcularon los parámetros de la distribución Gamma, debido la frecuencia distribuida Poisson con $\lambda=0.1$, las fórmulas usadas fueron:
+
+$\alpha=\dfrac{4 \lambda E[X^2]^3}{E[X^3]^2}$
+
+$\beta=\dfrac{2 E[X^2]}{E[X^3]}$
+
+$x_0=\dfrac{\lambda E[X]-2\lambda E[X^2]^2}{E[X^3]}$
+
+Y se obtiene una distribución Gamma trasladada
+$G(x-x_0; \lambda, \beta)$
+
+```{r}
+theta <- 1/10000
+E_X <- 1/theta #Media de severidad
+E_X2 <- 2/(theta^2) #Segundo momento severidad
+E_X3 <- 6/(theta^3) #Tercer momento severidad
+
+alpha <- 4*lambda*(E_X2)^3/(E_X3)^2 # parámetro alpha para proximacion Gamma
+beta <- 2*(E_X2/E_X3) # parámetro beta de aproximacion Gamma
+x_0 <-lambda*E_X-(2*lambda*(E_X2)^2)/E_X3 # parámetro de traslación para aproximación Gamma
+
+media_s <- sum(s*f_s)
+mediasim_s <- sim_i$sim %>% mean()
+```
+
+**Comparación entre los 3 modelos**
+
+Se compararon la media, la varianza, el sesgo, el coeficiente de sesgo, la kurtosis y los percentiles utilizando los 3 métodos
+
++ Media
+
+```{r}
+E_S <- x_0+(alpha/beta)
+```
+
+La media de la Gamma trasladada es `r E_S`
+
+```{r}
+#mediasim_s # Media de simulaciones
+```
+
+La media de las simulaciones es `r mediasim_s`
+
+```{r}
+#media_s # Media de conv
+```
+
+Media del modelo teórico (convoluciones) es `r media_s`
+
+La media de los tres modelos es similar, la media del proceso obtenido por convoluciones resultó mayor, porque tenemos un tamaño de "muestra" menor que en los otros 2 casos, ya que solamente se obtuvieron 100 valores para el soporte de ésta. Cabe señalar que se probó con un soporte mucho más grande y se obtuvieron resultados satisfactorios, se observó mientras el soporte crecía la diferencia entre modelos disminuía.
+
++ Varianza
+
+La información se presenta en forma de la desviación estándar
+
+```{r}
+var_gama_s <- alpha/beta^2 #
+var_sim_s <- var(sim_i$sim)
+
+E_X2_convoluciones <- sum(s^2*f_s) #Segundo momento de la distribución de convoluciones
+var_s <- E_X2_convoluciones-(media_s)^2 #Varianza de convoluciones
+```
+
+Varianza de la Gamma Trasladada:
+
+`r sqrt(var_gama_s)`$^2$
+
+Varianza de las simulaciones
+
+`r sqrt(var_sim_s)`$^2$
+
+Varianza de las convoluciones
+
+`r sqrt(var_s)`$^2$
+
++ Sesgo
+
+```{r}
+sesgo_gama_s <- 2*alpha/beta^3 #sesgo(skewness)
+sesgo_s <- sum((s-media_s)^3*f_s) #sesgo(skewness) convoluciones
+#c(sesgo_gama_s,sesgo_s)
+```
+
+El sesgo de la Aproximación por Gamma Trasladada es `r sesgo_gama_s` y de la distribución por convoluciones `r sesgo_s`
+
++ Coeficiente  de sesgo
+
+Sesgo de la Aproximación por Gamma Trasladada y de la distribución por convulciones. Donde el coeficiente del sesgo se define.
+
+$\gamma_1=\dfrac{\mu_3}{\sigma^3}$
+
+```{r}
+coef_sesgo_gama_s <- sesgo_gama_s/(var_gama_s)^(3/2) #coeficiente de sesgo gama
+coef_sesgo_s <- sesgo_s/(var_s)^(3/2) #coeficiente de sesgo convoluciones
+#c(coef_sesgo_gama_s,coef_sesgo_s)
+```
+
+El coeficiente de sesgo para la distribución Gamma es `r coef_sesgo_gama_s` mientras que el de las convoluciones es `r coef_sesgo_s`.
+
++ Kurtosis
+
+La kurtosis se define como
+
+$\gamma_2=\dfrac{\mu_4}{\sigma^4}$
+
+```{r}
+kurtosis_s <- sum((s-media_s)^4*f_s) #kurtosis convoluciones
+coef_kur_s <- kurtosis_s/(var_s)^2
+kurtosis_gama_s <- (6/alpha)+3
+```
+
+La kurtosis de la Gamma Trasladada es `r kurtosis_gama_s`
+
+La kurtosis de las convoluciones es `r coef_kur_s`
+
++ Percentiles
+
+Se muestran a continuación percentiles importantes obtenidos de la simulaciones, de la distribución gamma y de las convoluciones respectivamente
+
+```{r}
+percentiles <- c(0.25,0.50,0.75,0.95,0.99)
+per_sim <- quantile(sim_i$sim,percentiles) #Percentiles de simulaciones
+
+#per_gama_s <- quantile(rgamma(1000,alpha,beta)+x_0,percentiles)
+#kable(per_gama_s)
+
+#Percentiles de las convolusiones
+#25
+per25_s <- filter(mod_agregado,`F(s)`<0.25)
+per25_s <- ifelse(dim(per25_s)[1]!=0,per25_s$s %>% max(),0)
+
+#50
+per50_s <- filter(mod_agregado,`F(s)`<0.50)
+per50_s <- ifelse(dim(per50_s)[1]!=0,per50_s$s %>% max(),0)
+
+#75
+per75_s <- filter(mod_agregado,`F(s)`<0.75)
+per75_s <- ifelse(dim(per75_s)[1]!=0,per75_s$s %>% max(),0)
+
+#95
+per95_s <- filter(mod_agregado,`F(s)`<0.95)
+per95_s <- ifelse(dim(per95_s)[1]!=0,per95_s$s %>% max(),0)
+
+#99
+per99_s <- filter(mod_agregado,`F(s)`<0.99)
+per99_s <- ifelse(dim(per99_s)[1]!=0,per99_s$s %>% max(),0)
+
+per_s <- c(per25_s,per50_s,per75_s,per95_s,per99_s)
+#kable(per_s) #Percentiles de la convolución
+percentiles_table <- cbind(per_sim,per_s)
+
+colnames(percentiles_table) <- c("Simulaciones", "Convoluciones")
+
+kable(percentiles_table)
+```
+
+## Pregunta 2
+
++ Proceso estocástico de la severidad y frecuencia
+
+Para simular el proceso estocástico de las ocurrencias y sus magnitudes, se corrieron 10,000 simulaciones para el tiempo de espera entre cada evento exponencial con media ($\lambda =$.1) para con ello generar el proceso Poisson, la severidad se distribuye exponencial, ambas con los parámetros de la primera pregunta.
+
+```{r}
+set.seed(139380)
+
+n_sim <- 10000
+sim_serie <- NULL
+sim_serie <- matrix(nrow=n_sim,ncol=2)
+for(i in 1:(n_sim-1)){
+sim_serie[1,1] <- rexp(1,lambda) #Tiempo 1
+sim_serie[1,2] <- rexp(1,theta) #Monto 1
+
+sim_serie[i+1,1] <- rexp(1,lambda) + sim_serie[i,1]
+
+sim_serie[i+1,2] <- rexp(1,theta)
+}
+
+
+sim_serie <- data.frame(T_i=sim_serie[,1],
+                        X_i=sim_serie[,2])
+
+sim_serie <- sim_serie %>% mutate(S_t=cumsum(X_i))
+
+ggplot(sim_serie, aes(x=T_i,y=X_i)) + geom_step() + coord_cartesian(xlim=c(0,1000))
+
+ggplot(sim_serie, aes(x=T_i,y=S_t)) + geom_step() + coord_cartesian(xlim=c(0,100),ylim=c(0,200000))
+```
+
+Debido a que los siniestros ocurren con una tasa muy baja (0.1 eventos al año en promedio), se acotaron los márgenes de las gráficas para un mejor análisis.
+
+La primera gráfica muestra las ocurrencias y la severidad de cada siniestro ocurrido a través del tiempo. Cuando la gráfica se mantiene constante significa que durante ese periodo de tiempo no ocurrió nigún siniestro. Cuando la gráfica da un salto (hacia arriba o hacia abajo) sgnifica que ocurrió en ese momento otro siniestro, cuya severidad se da en el valor de las ordenadas ($X_i$) donde se detiene el brinco.
+
+El proceso de riesgo en el tiempo se observa en la segunda gráfica, que dibuja la Severidad Acumulada. Es decir, inicia en cero y cada vez que ocurre un evento en $t$ se suma a la severidad acumulada ($S_{t-1}$) el monto $X_t$ del nuevo siniestro para obtener el agregado al tiempo t, $S_t$.
+
+Se puede observar que, en general, pasa mucho tiempo entre siniestros. Por ejemplo, a partir del año 15 pasaron 30 años para que ocurriera el siguiente siniestro. Aunque es el periodo de espera más largo visible, en general no hay brincos en menos de 5 años. Se observa, sin embargo, que alrededor del año 20 ocurrieron 2 siniestros con muy poca separación.
+
+No se observa ningún comportamiento que indique alguna tendencia o estacionalidad, lo que nos hace concluir que la severidad y la frecuencia no tienen ninguna clase de corelación. Al haber generado los datos con simluaciones, lo dicho anteriormente es lo que se esperaba, pues las muestras son, por construcción, aleatorias e independientes.
+
+2.3
+
+Se define la distribución empírica como
+$F_n(x)=\dfrac{1}{n}\sum{I [x_i\leq x]}$ una suma de ensayos Bernoulli con probabilidad de éxito igual a $F_x(x)$.
+Por lo tanto $nF_n(x)$~Binomial(n,F(X))
+
+Tomamos las propiedades de la distribución Bernoulli:
+$E(x)=np$
+$V[x]=npq$
+
+Y con eso construimos intervalos de confianza a través de la distribución $N(E[X],V[X])$ para cada valor simulado, generando así el intervalo de confianza de la distribución, que en aparecen como dos curvas en azul que encierran a la distribución empírica (en rojo)
+
+```{r}
+sop <- c(0:(n_sim-1))
+ 
+real_X <- data.frame(soporte=c(0:100000),teorica=pexp(c(0:100000),theta))
+
+#Intervalo de confianza para los cuantiles p
+n <- n_sim
+p <- seq(1/n_sim,1,by=1/n_sim) #Cuantiles deseado
+q <- 1-p
+alpha=.1
+z <- qnorm(1-(alpha/2),0,1)
+
+media_per <- n*p
+var_per <- n*p*q
+sd_per <- sqrt(var_per)
+
+LI <- ifelse(floor(media_per + 0.5 - z*sd_per)<1
+             ,1
+             ,ifelse(floor(media_per + 0.5 - z*sd_per)>n_sim
+                     ,n_sim
+                     ,floor(media_per + 0.5 - z*sd_per)))
+             
+
+LS <- ifelse(ceiling(media_per + 0.5 + z*sd_per)<1
+             ,1
+             ,ifelse(ceiling(media_per + 0.5 + z*sd_per)>n_sim
+                     ,n_sim
+                     ,ceiling(media_per + 0.5 + z*sd_per)))
+
+#se aÃ±aden los percentiles y los estadísticos de orden
+
+sim_serie <- sim_serie %>% mutate(X_ord=sort(X_i),q=p,LI=X_ord[LI],LS=X_ord[LS])
+
+ggplot(sim_serie) + stat_ecdf(aes(X_i))+ geom_line(data=real_X,aes(x=soporte,y=teorica),col="red") + geom_line(aes(x=LI,y=q),col="blue") + geom_line(aes(x=LS,y=q),col="blue")
+
+
+#Regiones de confianza para la distribución
+perc_int <- c(.25, .5 , .75, .9, .95, .99)
+indices_perc <- n_sim*perc_int
+tabla_perc_int <- data.frame(sim_serie[indices_perc,c("q","LI","LS")])
+names(tabla_perc_int) <- c("Percentiles","Límite Inferior", "Límite Superior")
+```
+
+Se muestra a continuación una tabla con percentiles importantes:
+
+`r kable(tabla_perc_int)`
+
+2.4
+
+
+```{r}
+ggplot(data = sim_serie, aes(X_i))+geom_histogram()
+```
+
+El histograma generado para la distribución empírica sugiere que podría ajustárse una distribución expponencial o Gamma resultado que es obvio ya que los datos se generaron así.
+
+2.5
+
++Valor Esperado Limitado
+
+El valor esperado limitado es una censura por la derecha definida como:
+$min(x,u)=x\wedge u= \begin{cases}x,&{x<u}\\u,&u\leq x\end{cases}$
+
+L u será variable para poder concluir sobre la distribución y su cola, primero tomamos el valor más pequeño de las simulaciones como el límite, luego el segundo valor y así sucesivamente con todos los valores de la simulación.
+Con cada proceso se calculó una media y se graficó el vector de medias limitadas.
+
+```{r}
+#Valor esperado limitado
+#Limited Expected Value
+min_ux <- function(x,u){y <- ifelse(x<u,x,u)}
+x <- NULL
+LEV <- NULL
+
+for(i in 1:n_sim){
+x <- min_ux(sim_serie$X_ord,
+            sim_serie$X_ord[i])
+LEV[i] <- mean(x)
+}
+
+sim_serie <- sim_serie %>% mutate(LEV)
+
+ggplot(sim_serie) + geom_line(aes(x=X_ord,y=LEV))
+
+```
+
+La gráfica muestra un comportamiento creciente, sin embargo se estabiliza al aproximarse a 10,000 lo que sugiere colas ligeras.
+
++ Media en exceso
+
+Contrario a la LEV, en este caso se analiza el comportamiento del proceso de riesgo cuando hay  un truncamiento de d unidades. Es decir, conocemos el valor por encima de d de las observaciones, pero condicionado a que superen el umbral; por lo cual si la severidad es menor a d, no se toman en cuenta esos siniestros.
+
+La probabilidad condicionada a que supere el umbreal es entonces:
+$S_{x-d|x>d}(x)=P[x-d>x|x>d$
+
+Y la media en exceso es
+$e(d)=E[x-d|x>d]$
+
+Así como en al ejercicio del LEV, con la media en exceso se dejó variable el valor del umbral d, tomando cada valor de la severidad $X_i$ ordenado como un nuevo umbral y calculando la media para cada caso. A continuación se presenta la gráfica de la media en exceso de pérdida, Mean Excess Loss.
+
+```{r}
+#Media en exceso de 
+#Mean Excess Loss
+Fn_x <- ecdf(sim_serie$X_i)(sim_serie$X_ord) 
+Sn_x <- 1-Fn_x
+
+sim_serie <- sim_serie %>% mutate(MEL=(mean(X_i)-LEV)/Sn_x)
+
+ggplot(sim_serie) + geom_line(aes(x=X_ord,y=MEL))
+```
+
+La media en exceso tiene un comportamiento alrededor de 10000 para las primeras 75000 observaiones, lo que sugiere que no hay problemas de colas pesadas, a partir de ese punto crece ya que hay menos valores por encima de la cota por lo que el nivel aumenta y finalmente decrece hasta llegar a 0. Por lo tanto no se observa comportamiento que indique una cola pesada.
+
++ Fuerza de mortalidad empírica
+
+```{r}
+#Fuerza de mortalidad
+sim_serie <- sim_serie %>% mutate(mu_x=(1/n_sim)/Sn_x)
+
+sim_serie$mu_x[n_sim] <- 1
+
+ggplot(sim_serie) + geom_line(aes(x=X_ord,y=mu_x))
+```
+
+La fuerza de mortalidad es la tasa instantánea a la que decrece la población instantaneamente. La gráfica deja ver que la fuerza de mortalidad para el proceso simulado es creciente, este comportamiento es un indicador de colas ligeras.
+
++ Prueba Chi Cuadrada
+
+$H_0$: Los datos siguen una distribución exponencial
+
+$H_1$: los datos no siguen una distribución exponencial
+
+Se obtuvo con R la prueba Chi Cuadrada otorgando un vector de probabilidades exponencial con el cuál comparar, los resultados se muestran a continuación:
+
+```{r}
+# Prueba Xi cuadrada
+#muestra <- sampling::srswor(1000,length(sim_serie$X_i))
+
+#muestraF <- sim_serie$X_i[which(muestra==1)] %>% as.data.frame()
+
+prob_exp <- dexp(sim_serie$X_i, theta)
+chisq.test(sim_serie$X_i, p=prob_exp, rescale.p = TRUE)
+```
+
+La prueba chi cuadrada, con un p-value tan pequeño, nos dice que no existe evidencia suficiente para rechazar que los datos sigan una distribución exponencial, un resultado que se espera ya que fue así como se generaron las simulaciones.
+
+2.7
+
++ q-q Plot
+
+Dicha gráfica permite comparar dos distribuciones al graficar sus cuantiles. En este caso comparamos la distribución empírica que obtuvimos con nuestro modelo paramétrico que queremos ajustar: exponencial.
+
+Se obserrva que los puntos se ajustan casi perfectamente en la línea de 45 grados, por lo que el modelo exponencial no debe de rechazarse, nuevamente los resultados son los esperados porque así fueron generadas las simulaciones.
+
+```{r}
+ggplot(sim_serie, aes(sample=X_i))+geom_qq(distribution = qexp)
+
+# El modelo parece que apenas subestima los eventos de monto alto, pero en general ajusta bastante bien. Esto es obvio, dado que los datos fueron simulados a partir de una exponencial.
+```
+
+2.8
+
++ Caso Poisson
+
+Para contrastar la distribución Poisson en la frecuencia se agrupó el número de evntos ocurridos por año, para generar una tabla de frecuencias, dada ésta tabla se estimó el parámetro para la frecuencia $\hat{\lambda}$ para después tener un intervalo de confianza al 90% para la siniestralidad promedio.
+
+```{r}
+sop_frec <- floor(max(sim_serie$T_i))
+tabla_frec <- data.frame(n=rep(0,sop_frec))
+#ti <- sim_serie$T_i
+#x <- NULL
+#x <- matrix(nrow=21,ncol=7) 
+#for(i in c(0:20)){ #corre todo los valores del soprte deseados
+#  for(j in 1:5){ #evalua cada uno de los puntos de la muestra y encuentra el intervalo al que pertencece
+#  x[i+1,j] <- ifelse(i<ti[j]&ti[j]<i+1,1,0)
+#  x[i+1,7] <- i+1
+#  }}
+#for (i in 0:20){ #suma las columnas para contabilizar el total de eventos en el periodo i-Ã©simo
+#  x[i+1,6] <- sum(x[i+1,c(1:5)])
+#}
+
+ti <- sim_serie$T_i
+ceil_ti <- ceiling(ti) #techo
+un_n <- unique(ceil_ti) #buscar valores único para indexarlos de un vector lleno de ceros
+tab_ti <- table(ceil_ti) %>% as.data.frame() #cuenta las proporciones de los valores en la muestra
+frec_n <- rep(0,sop_frec)
+frec_n[un_n] <- tab_ti$Freq #llena las frecuencias para los valores que se encuentran en la muestra
+
+
+n_ti <- data.frame(n=c(0:sop_frec+1),frec=frec_n)
+
+#x <- matrix(nrow=sop_frec,ncol=n_sim+2)
+#ti <- sim_serie$T_i
+#for(i in 0:(sop_frec-1)){
+#  for(j in 1:n_sim){
+#  x[i+1,j] <- ifelse(i<ti[j]&ti[j]<i+1,1,0)
+#  x[i+1,n_sim+1] <- i+1
+#  }}
+#for (i in 1:(sop_frec-1)){
+#  x[i+1,n_sim+2] <- sum(x[i+1,])
+#}
+
+#Ajusta la distribcuión de maxima verosimilitud 
+lambda_est <- MASS::fitdistr(n_ti$frec, densfun = 'Poisson')
+alpha <- 0.10
+z_alpha <- qnorm(1-(alpha/2),0,1)
+Int_lambda <- c(lambda_est$estimate-z_alpha*lambda_est$sd
+  ,lambda_est$estimate+z_alpha*lambda_est$sd)
+```
+
+A continuación se realiza una prueba de bondad de ajusta $\chi^2$ para la frecuencia y comprobar que en efecto correponde a una distribución Poisson (0.1)
+
+```{r}
+
+prob_poi <- dpois(n_ti$frec, .1)
+chisq.test(n_ti, p=prob_poi, rescale.p = TRUE)
+```
+
+Los resultados de la prubea de hipótesis son los esperados con lo cual se procederá a calcular un intervalo de confianza para el parámetro $\lambda$=`r lambda_est$estimate` 
+
+Dicho intervalo es:
+
+$\hat{\lambda} \pm Z_{.05} * \sqrt{sd(\hat{\lambda})}$
+
+Donde $Z_{.05}$ es el cuantil .05 de la distribución normal estándar.
+
+Un intervalo de confianza al 90% de confianza es (`r Int_lambda`)
+
+Con lo que se observa que la frecuencia es como se esperaba Poisson  con parámetro ($\lambda$=0.1)
+
+## Ejercicio 3
+
+Se generó una tabla de indemnizaciones con el deducible y el límite correspondiente sobre los siniestro simulados, a continuación se muestra una tabla con los primero 10 siniestros observados y otra con los últimos 10
+
+```{r}
+Ind <- NULL
+u <- 30000 # Límite de cobertura
+d <- 5000 # Deducible
+for(i in 1:length(sim_serie$X_i)) {
+  Ind[i] <- min(sim_serie$X_i[i], u)
+  Ind[i] <- max(sim_serie$X_i[i]-d,0)
+  Ind[i] <- min(Ind[i], u)
+}
+
+indem_sim <- data.frame(S=sim_serie$X_i, "Indemnizaciones"=Ind)
+
+sim_serie <- sim_serie %>% mutate(Indemnizaciones=Ind) %>% select(c(1:2,11,3:10))
+
+
+# Proporción de indemnizaciones realizables de datos originales 
+prop <- sum(sim_serie$Indemnizaciones!=0)/n_sim
+
+sim_rest <- n_sim-sum(sim_serie$Indemnizaciones==0) 
+# Checar formulas para saber si tendría esta proporción de manera analítica
+
+media_indem <- sim_serie$Indemnizaciones %>% mean()
+media_teorica_indem <- exp(-5000*theta)*(8008.5) + 30000*(exp(-35000*theta))
+
+prop_indemnizable_teo <- (pexp(35000,theta)-pexp(5000,theta))
+
+```
+
+```{r}
+kable(sim_serie[1:10,1:3])
+kable(tail(sim_serie[,1:3],10))
+```
+
+
+Se tiene `r prop` de los datos originales una vez realizada la selección de los eventos indemnizables de las simulaciones generadas, para estimar esta proporción teóricamente calculamos la probabibilidad de pertencer al rango indemnizable , con ello la proporción indemnizable teóricamente es: $F_X(35,000)-F_X(50,000)$ = `r prop_indemnizable_teo`, se observa que las proporciones esperadas y la proporción observada son similares.
+
+ Además el valor de medio de las indemnizaciones es `r media_indem`. 
+ 
+Para calcular el valor teórico indemnizable se calculó la media de la siguiente variable aleatoria:
+
+$$Y=\begin{cases}
+0 & \mbox{si } X<5000 \\
+X-5000 & \mbox{si } 5000 \le X < 35000 \\
+30000 & \mbox{si } 35000 \le X \\
+\end{cases}$$
+
+En donde $X$ es la variable aleatoria de la severidad ($X \sim exp({\theta}=10,000)$) con lo cual $E[Y]$ = `r media_teorica_indem`.
+
+Se observa que tanto la estimación de la proporción y del valor esperado de las indemnizaciones son muy similares a lo que se observó en las simulaciones. Con lo cuál se comprubeba la veracidad el modelo.
+
+3.2
+
+```{r}
+#write.csv(indem_sim,
+#          "./muestra_indemnizaciones.csv")
+
+# Con los datos en excel y usando la función Solver
+#n_sim*lambda #número esperado de siniestros en 100k simulaciones
+#n_sim-n_sim*lambda#proporción estimada con lambda
+```
+
+```{r}
+frec_indem <- sim_serie %>% filter(Indemnizaciones!=0)
+sop_frec_indem <- floor(max(frec_indem$T_i))
+tabla_frec_indem <- data.frame(n=rep(0,sop_frec_indem))
+
+ti_indem <- frec_indem$T_i
+ceil_ti_indem <- ceiling(ti_indem) #techo
+un_n_indem <- unique(ceil_ti_indem) #buscar valores único para indexarlos de un vector lleno de ceros
+tab_ti_indem <- table(ceil_ti_indem) %>% as.data.frame() #cuenta las proporciones de los valores en la muestra
+frec_n_indem <- rep(0,sop_frec_indem)
+frec_n[un_n_indem] <- tab_ti_indem$Freq #llena las frecuencias para los valores que se encuentran en la muestra
+
+n_ti_indem <- data.frame(n=c(0:sop_frec+1),frec=frec_n)
+
+#Ajusta la distribcuión de maxima verosimilitud 
+lambda_est_indem <- MASS::fitdistr(n_ti_indem$frec, densfun = 'Poisson')
+alpha <- 0.10
+z_alpha <- qnorm(1-(alpha/2),0,1)
+Int_lambda_indem <- c(lambda_est_indem$estimate-z_alpha*lambda_est_indem$sd
+  ,lambda_est_indem$estimate+z_alpha*lambda_est_indem$sd)
+#Int_lambda_indem
+```
+
+Nuevamente se realizó el tratamiento a la muestra como se mencionó en el caso sin deducible, ni suma asegurada, para finalmente estimar los parámetros de la frecuencia y de la severidad correpondientes al nuevo modelo.
+
+Un intervalo de confianza al 90% de confianza para lambda del proceso de indemnizaciones es `r Int_lambda_indem`, y el valor puntual estimado es $\hat{\lambda}$= `r lambda_est_indem$estimate`
+
+```{r}
+n_ind <- 5976 # Observaciones totales quitando las que se tenían con indemnización 0 (debajo del deducible)
+lambda_maxver_ind <- 9579.89 # Lamda estimada por máxima verosimilitud con censura (u=30,000) y truncamiento (d=5,000)
+```
+
+```{r}
+#Ajusta la distribcuión de maxima verosimilitud para las indeminzaciones
+theta_indem <- MASS::fitdistr(frec_indem$Indemnizaciones, densfun = 'exponential')
+#theta_indem$estimate
+alpha <- 0.10
+z_alpha <- qnorm(1-(alpha/2),0,1)
+Int_lambda <- c(lambda_est$estimate-z_alpha*lambda_est$sd
+  ,lambda_est$estimate+z_alpha*lambda_est$sd)
+```
+
+El estimador máximo verosimil para las indemnizaciones es: $\hat\theta$= `r 1/theta_indem$estimate`en forma escalar
+
+3.3
+
+```{r}
+#Regiones de confianza
+#n_sim #Número de simulaciones
+indem_sim <- indem_sim %>% mutate(Ind_ord=sort(Indemnizaciones))
+medias_per_ind <- n_sim* .95
+vars_per_ind <- n_sim*.95*(1-.95)
+desvest_per_ind <- sqrt(vars_per_ind)
+lim_inf_ind <- floor(-1.96*desvest_per_ind+medias_per_ind+.5)
+lim_sup_ind <- ceiling(1.96*desvest_per_ind+medias_per_ind+.5)
+perc_int <- 0.95
+
+lim_inf_ind <- c(indem_sim$Ind_ord[lim_inf_ind],tabla_perc_int[5,2])
+lim_sup_ind <- c(indem_sim$Ind_ord[lim_sup_ind],tabla_perc_int[5,3])
+
+conf_int_ind <- data.frame("Intervalos"=c("Indemnizaciones", "Severidad"),"Límite Inferior"=lim_inf_ind, "Límite Superior"=lim_sup_ind) 
+conf_int_ind <- conf_int_ind %>% mutate(Cuantil_95=c(quantile(indem_sim$Indemnizaciones,.95),quantile(indem_sim$S,.95)))
+kable(conf_int_ind)
+```
+
+Con los resultados anteriores se observa que a pesar de considerar una nueva muestra con datos modificados es posible llegar a conclusiones acertadas sobre la frecuencia y la distribución.
+
+#### Conclusiones
+
+A lo largo del poryecto se ha realizado un tratamiento estadístico para comprobar la eficiencia de estimación de distribuciones y sus parámetros utilizando métodos empíricos, paramétricos y un caso caso límite del modelo agregado. Se concluye que los resultados fueron altamente satisfactorios para un proceso Poisson Compuesto con distribución exponencial en su severidad. Con tales resultados se justifica la aplicación a muestras no generadas provenientes de un proceso de riesgo totalmente desconocido en su construcción y medición.
