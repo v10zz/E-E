@@ -1,0 +1,99 @@
+---
+title: "Tarea 3"
+author: "Erick Zarza, Laura Tejada, Edmar Trapaga"
+date: "27 de septiembre de 2018"
+output: 
+  html_document:
+    toc: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = F, error = F, warning = F,
+                      fig.align = "center")
+```
+
+```{r directorio y libreria}
+setwd("C:/Users/EZ/Desktop/S/EAIII/Tareas/Tarea 3")
+library(tidyverse)
+library(MASS)
+```
+
+<!-- #{.tabset .tabset-fade .tabset-pills} -->
+
+#2
+
+```{r cargar datos}
+data_1 <- read_table2("data/T8_4.DAT", col_names = F)
+```
+
+```{r 1. Dispersion}
+data_1 %>% pairs()
+```
+
+
+Se presentan a continuación los vectores de medias, desviaciones estándar; las  matrices de varianzas y covarianzas, la matriz de correlación
+
+```{r 1. Vector de medias y matriz de varianzas y covarianzas}
+medias <- apply(data_1, 2, function(x) mean(x))
+desv_est <- apply(data_1, 2, function(x) sd(x))
+S <- cov(data_1)
+medias
+desv_est
+S
+cor(data_1)
+```
+
+Llama la atención que todaas las variables mantienen una relación positiva entre ellas, por lo que se debe de tratar de acciones cuyas empresas son complementarias ya que al aumentar el rendimiento de una aumenta el rendimiento del portafolio.
+
+```{r 1. Componentes principales}
+z <- princomp(data_1, cor = F)
+```
+
+Las descomposición en componentes principales es:
+
+```{r 1. PCA}
+summary(z)
+```
+
+La siguiente figura muestra el diagrama de codo para componentes principales:
+
+```{r 1. Grafica del codo}
+plot(z, type = "lines")
+```
+
+Se observa que la primera componente explica aproximadamente el 60% de la varianza, a partir de la segunda componente la difenrecia entre varianzas es leve, por lo que quedarse con la primera componente parece ser lo más conveniente.
+
+Las combinaciones lineales generadas con las componentes principales es:
+
+```{r 1. Loadings}
+summary(z)[[2]]
+
+```
+
+Para la primera componente se asigna un valor negativo a todas las variables, 
+esta relación se mantiene de la matriz de correlación. Sin embargo para las 
+componentes principales se mantiene una relación negativa, por lo que el 
+impacto en el rendimiento positivo afecta negativamente a la primera componente,
+podría referirse a una disminución en la dispersión del portafolio al aumentar 
+los rendimientos en conjunto.
+
+La segunda componente no toma en cuenta a las variable X2 y X5, 
+mientras que particiona al resto en dos conjuntos con relación inversa.  
+
+Los intervalos de confianza bonferronizados para los eigenvalores, 
+suponiendo normalidad, con confianza al 95% de confianza son: 
+
+<!-- Checar intervalos -->
+
+
+```{r 1. Intervalos de confianza}
+alpha <- 0.05
+lambda <- eigen(S)$values # Eigenvalores de la matriz de varianzas y covarianzas
+Int <- data.frame("Límite Inferior"=lambda - qt(1-(2*5*alpha), lambda
+                                                  , z$sdev^2, lower.tail = F),
+                  "Límite Superior"=lambda + qt(1-(2*5*alpha), lambda, 
+                                                  z$sdev^2, lower.tail = F)) 
+
+Int 
+```
+
